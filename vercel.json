@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci --prefix potiony",
+  "buildCommand": "npm run build --prefix potiony",
+  "outputDirectory": "potiony/dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
