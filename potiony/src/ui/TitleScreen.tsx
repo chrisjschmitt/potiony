@@ -9,6 +9,7 @@ export function TitleScreen() {
   const newGame = useGame((s) => s.newGame)
   const trash = useGame(selectTrashCollected)
   const clean = useGame(selectPlanetClean)
+  const level = useGame((s) => s.level)
   const [confirming, setConfirming] = useState(false)
   const hasSave = trash > 0 || clean > 0
 
@@ -56,6 +57,11 @@ export function TitleScreen() {
         <p className="mt-2 max-w-xl text-lg font-bold text-white/85 sm:text-2xl">
           Tidy up the world 🌍, brew magic potions 🫧, and help your friends feel happy again 💛
         </p>
+        {level >= 2 && (
+          <p className="mt-2 rounded-full border-4 border-amber-300 bg-amber-400/90 px-4 py-1 text-lg font-black text-slate-900">
+            Level 2 is open — look for the dumpster! 🗑️
+          </p>
+        )}
 
         <div className="mt-8 flex flex-col items-center gap-4">
           {hasSave && (

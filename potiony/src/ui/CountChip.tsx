@@ -1,9 +1,9 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 
 const SIZES = {
-  sm: { box: 'h-16 w-16 text-3xl', badge: 'text-sm h-6 min-w-6' },
-  md: { box: 'h-20 w-20 text-4xl', badge: 'text-base h-7 min-w-7' },
-  lg: { box: 'h-24 w-24 text-5xl', badge: 'text-lg h-8 min-w-8' },
+  sm: { box: 'h-16 w-16 text-3xl', badge: 'text-sm h-6 min-w-6', col: 'w-[4.5rem]' },
+  md: { box: 'h-20 w-20 text-4xl', badge: 'text-base h-7 min-w-7', col: 'w-24' },
+  lg: { box: 'h-24 w-24 text-5xl', badge: 'text-lg h-8 min-w-8', col: 'w-28' },
 }
 
 export type CountChipProps = {
@@ -39,7 +39,7 @@ export function CountChip({
 }: CountChipProps) {
   const s = SIZES[size]
   return (
-    <div className="flex w-fit shrink-0 flex-col items-center gap-1" title={title}>
+    <div className={`flex ${s.col} shrink-0 flex-col items-center pt-2 pr-1`} title={title}>
       <div
         ref={elementRef}
         onPointerDown={onPointerDown}
@@ -57,7 +57,7 @@ export function CountChip({
         {count !== undefined && (
           <span
             className={[
-              'absolute -top-2 -right-2 grid place-items-center rounded-full border-2 border-white bg-slate-900 px-1 font-bold text-white',
+              'absolute -top-1.5 -right-1.5 grid place-items-center rounded-full border-2 border-white bg-slate-900 px-1 font-bold text-white',
               s.badge,
             ].join(' ')}
           >
@@ -66,7 +66,7 @@ export function CountChip({
         )}
       </div>
       {label && (
-        <span className="max-w-24 text-center text-[11px] leading-tight font-bold text-white/90 drop-shadow">
+        <span className="mt-1 w-full truncate text-center text-[10px] leading-tight font-bold text-white/90 drop-shadow">
           {label}
         </span>
       )}

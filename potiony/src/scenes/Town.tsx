@@ -1,13 +1,12 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { FRIENDS, FRIEND_ORDER } from '../content/friends'
-import { POTIONS, POTION_ORDER } from '../content/recipes'
-import type { FriendId, PotionId } from '../content/types'
-import { selectHealedCount, useGame } from '../store/gameStore'
+import { FRIENDS, LEVEL1_FRIENDS, visibleFriends } from '../content/friends'
+import { POTIONS } from '../content/recipes'
+import type { FriendId } from '../content/types'
+import { selectFriendTotal, selectHealedCount, useGame } from '../store/gameStore'
 import { audio } from '../systems/audio/AudioBus'
 import { fx } from '../systems/fx/ParticleLayer'
-import { useDraggable, useDropTarget } from '../systems/drag/DragProvider'
-import { CountChip } from '../ui/CountChip'
+import { useDropTarget } from '../systems/drag/DragProvider'
 
 function FriendCard({ id }: { id: FriendId }) {
   const friend = FRIENDS[id]
@@ -71,13 +70,13 @@ function FriendCard({ id }: { id: FriendId }) {
           if (!healed) showToast(friend.ailmentEmoji, `${friend.name} has the ${friend.ailment}!`)
         }}
         className={[
-          'flex w-40 flex-col items-center gap-1 rounded-[2rem] border-4 border-white/70 bg-gradient-to-b p-4 shadow-2xl transition sm:w-48',
+          'flex w-32 flex-col items-center gap-1 rounded-[2rem] border-4 border-white/70 bg-gradient-to-b p-3 shadow-2xl transition sm:w-40',
           friend.swatch,
           healed ? 'animate-bob' : '',
           isOver ? 'scale-110 ring-8 ring-white' : isCandidate ? 'animate-shimmer' : '',
         ].join(' ')}
       >
-        <span className="text-7xl drop-shadow-[0_6px_10px_rgba(0,0,0,0.35)]">{friend.emoji}</span>
+        <span className="text-6xl drop-shadow-[0_6px_10px_rgba(0,0,0,0.35)] sm:text-7xl">{friend.emoji}</span>
         <span className="text-lg font-black drop-shadow">{friend.name}</span>
         <span className="rounded-full bg-slate-900/40 px-3 py-1 text-center text-xs font-bold">
           {healed ? '💛 All better!' : friend.ailment}
@@ -87,36 +86,21 @@ function FriendCard({ id }: { id: FriendId }) {
   )
 }
 
-function PotionTrayItem({ id }: { id: PotionId }) {
-  const count = useGame((s) => s.potions[id])
-  const potion = POTIONS[id]
-  const { onPointerDown, isDragging } = useDraggable({
-    payload: { kind: 'potion', id, emoji: potion.emoji },
-    disabled: count <= 0,
-    onTap: () => audio.tap(),
-    onMiss: () => audio.nope(),
-  })
-
-  return (
-    <CountChip
-      emoji={potion.emoji}
-      label={potion.name}
-      count={count}
-      swatch={potion.swatch}
-      dimmed={count <= 0}
-      dragging={isDragging}
-      highlight={count > 0}
-      onPointerDown={count > 0 ? onPointerDown : undefined}
-    />
-  )
-}
-
 export function Town() {
   const healed = useGame(selectHealedCount)
   const setScene = useGame((s) => s.setScene)
-  const total = FRIEND_ORDER.length
-  const brightness = healed / total
+  const level = useGame((s) => s.level)
+  const total = useGame(selectFriendTotal)
+  const brightness = total === 0 ? 0 : healed / total
   const anyPotions = useGame((s) => Object.values(s.potions).some((n) => n > 0))
+  const friendsOnScreen = visibleFriends(level)
+  const l1Done = useGame((s) => LEVEL1_FRIENDS.every((id) => s.friends[id]?.healed))
+  const unlockLevel2 = useGame((s) => s.unlockLevel2)
+
+  // Catch saves that finished Level 1 before Level 2 existed (or a stale bundle).
+  useEffect(() => {
+    if (l1Done && level < 2) unlockLevel2()
+  }, [l1Done, level, unlockLevel2])
 
   return (
     <div className="relative h-full overflow-hidden rounded-[2rem] border-4 border-white/20">
@@ -150,42 +134,36 @@ export function Town() {
       </div>
 
       <div className="relative flex h-full flex-col">
-        <div className="flex items-baseline justify-between px-5 pt-4">
+        <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
           <div>
             <h2 className="text-2xl font-black text-slate-900 drop-shadow">🏡 Town & Friends</h2>
             <p className="text-sm font-bold text-slate-800/80">
-              Drag the right potion to the friend who needs it.
+              {anyPotions
+                ? 'Drag a potion up from your bar onto a friend.'
+                : 'Brew a potion, then drag it from your bar to a friend.'}
             </p>
           </div>
-          <p className="rounded-full border-4 border-white bg-slate-900/70 px-4 py-1 font-black">
-            💛 {healed}/{total} helped
-          </p>
-        </div>
-
-        <div className="flex min-h-0 flex-1 items-center justify-center gap-4 px-4 sm:gap-8">
-          {FRIEND_ORDER.map((id) => (
-            <FriendCard key={id} id={id} />
-          ))}
-        </div>
-
-        <div className="flex items-center justify-center gap-4 border-t-4 border-white/40 bg-slate-900/45 px-5 py-3">
-          {anyPotions ? (
-            POTION_ORDER.map((id) => <PotionTrayItem key={id} id={id} />)
-          ) : (
+          {!anyPotions && (
             <button
               onClick={() => {
                 audio.tap()
                 setScene('lab')
               }}
-              className="flex min-h-16 items-center gap-3 rounded-full border-4 border-white bg-gradient-to-b from-fuchsia-500 to-purple-600 px-8 text-xl font-black active:scale-95"
+              className="min-h-14 shrink-0 rounded-full border-4 border-white bg-gradient-to-b from-fuchsia-500 to-purple-600 px-5 text-lg font-black text-white active:scale-95"
             >
-              🧪 No potions yet — go brew one!
+              🧪 Potion Lab
             </button>
           )}
         </div>
+
+        <div className="flex min-h-0 flex-1 flex-wrap items-center justify-center gap-3 px-3 sm:gap-4">
+          {friendsOnScreen.map((id) => (
+            <FriendCard key={id} id={id} />
+          ))}
+        </div>
       </div>
 
-      {healed === total && (
+      {level >= 2 && healed === total && total > 0 && (
         <motion.div
           initial={{ scale: 0.7, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}

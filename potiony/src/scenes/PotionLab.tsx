@@ -1,53 +1,15 @@
 import { useCallback, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { INGREDIENTS, INGREDIENT_ORDER } from '../content/ingredients'
-import { MAX_CAULDRON_SLOTS, POTIONS, isPartialRecipe } from '../content/recipes'
-import type { PotionId } from '../content/types'
-import { selectAvailable, useGame } from '../store/gameStore'
+import { INGREDIENTS } from '../content/ingredients'
+import { MAX_CAULDRON_SLOTS, POTIONS, isPartialRecipe, matchRecipe } from '../content/recipes'
+import type { IngredientId, PotionId } from '../content/types'
+import { useGame } from '../store/gameStore'
 import { audio } from '../systems/audio/AudioBus'
 import { fx } from '../systems/fx/ParticleLayer'
-import { useDraggable, useDropTarget } from '../systems/drag/DragProvider'
-import { CountChip } from '../ui/CountChip'
-import type { IngredientId } from '../content/types'
+import { useDropTarget } from '../systems/drag/DragProvider'
 
 const STIR_TARGET_DEGREES = 540
-
-function ShelfItem({ id }: { id: IngredientId }) {
-  const ingredient = INGREDIENTS[id]
-  const available = useGame((s) => selectAvailable(s, id))
-  const addToCauldron = useGame((s) => s.addToCauldron)
-  const ref = useRef<HTMLDivElement | null>(null)
-
-  const { onPointerDown, isDragging } = useDraggable({
-    payload: { kind: 'ingredient', id, emoji: ingredient.emoji },
-    disabled: available <= 0,
-    // Tap works as well as drag: it drops one straight into the cauldron.
-    onTap: () => {
-      if (addToCauldron(id)) {
-        audio.plop()
-        fx.burstAt(ref.current, { emojis: [ingredient.emoji], count: 6, power: 200 })
-      } else audio.nope()
-    },
-    onMiss: () => audio.nope(),
-  })
-
-  return (
-    <CountChip
-      emoji={ingredient.emoji}
-      label={ingredient.name}
-      count={available}
-      swatch={ingredient.swatch}
-      dimmed={available <= 0}
-      dragging={isDragging}
-      onPointerDown={available > 0 ? onPointerDown : undefined}
-      elementRef={(el) => {
-        ref.current = el
-      }}
-      title={ingredient.hint}
-    />
-  )
-}
 
 function Cauldron() {
   const cauldron = useGame((s) => s.cauldron)
@@ -124,7 +86,7 @@ function Cauldron() {
       <div className="flex items-center gap-3">
         <p className="text-sm font-bold text-white/80">
           {cauldron.length === 0
-            ? 'Drop 2 or 3 ingredients in the pot 🫧'
+            ? 'Drop 2 ingredients in the pot 🫧'
             : !stillPossible
               ? 'Hmm, this mix looks silly! Empty it and try again.'
               : cauldron.length < 2
@@ -155,6 +117,8 @@ function liquidColor(id: IngredientId) {
       return '#38bdf8'
     case 'whispering_leaf':
       return '#4ade80'
+    case 'moonpetal':
+      return '#a78bfa'
     case 'star_dust':
       return '#fbbf24'
   }
@@ -163,8 +127,9 @@ function liquidColor(id: IngredientId) {
 function StirWheel({ onBrew }: { onBrew: () => void }) {
   const cauldron = useGame((s) => s.cauldron)
   const [progress, setProgress] = useState(0)
-  const ready = cauldron.length >= 2
+  const ready = Boolean(matchRecipe(cauldron))
   const dragging = useRef<{ angle: number; total: number } | null>(null)
+  const finishing = useRef(false)
 
   const angleFrom = (el: HTMLElement, x: number, y: number) => {
     const r = el.getBoundingClientRect()
@@ -173,12 +138,21 @@ function StirWheel({ onBrew }: { onBrew: () => void }) {
 
   const bump = useCallback(
     (amount: number) => {
+      if (finishing.current) return
       setProgress((prev) => {
         const next = prev + amount
         if (next >= 1) {
-          onBrew()
+          // React Strict Mode calls this updater twice. A ref lock keeps a good
+          // mix from brewing, emptying the pot, then brewing again as a fail.
+          if (finishing.current) return 0
+          finishing.current = true
           dragging.current = null
-          return 0
+          queueMicrotask(() => {
+            onBrew()
+            finishing.current = false
+            setProgress(0)
+          })
+          return 1
         }
         if (Math.floor(next * 6) !== Math.floor(prev * 6)) audio.bubble()
         return next
@@ -305,10 +279,11 @@ function BrewResult({ potion, onClose }: { potion: PotionId | 'mystery'; onClose
 }
 
 export function PotionLab() {
-  const brew = useGame((s) => s.brew)
   const [result, setResult] = useState<PotionId | 'mystery' | null>(null)
 
   const handleBrew = useCallback(() => {
+    const { cauldron, brew } = useGame.getState()
+    if (cauldron.length < 2) return
     const potion = brew()
     if (potion) {
       audio.brewed()
@@ -325,7 +300,7 @@ export function PotionLab() {
       audio.nope()
       setResult('mystery')
     }
-  }, [brew])
+  }, [])
 
   return (
     <div className="relative h-full overflow-hidden rounded-[2rem] border-4 border-white/20 bg-[radial-gradient(circle_at_50%_0%,#4c1d95_0%,#2e1065_55%,#170938_100%)]">
@@ -345,25 +320,11 @@ export function PotionLab() {
         <div className="px-5 pt-4">
           <h2 className="text-2xl font-black">🧪 Potion Lab</h2>
           <p className="text-sm font-bold text-white/70">
-            Drag ingredients into the cauldron, then stir!
+            Drag ingredients up from your bar, then stir!
           </p>
         </div>
 
-        <div className="flex min-h-0 flex-1 items-center justify-around gap-4 px-5">
-          <section
-            aria-label="Ingredient shelf"
-            className="flex max-h-full flex-col gap-3 rounded-3xl border-4 border-amber-900/60 bg-amber-950/50 p-4"
-          >
-            <h3 className="text-xs font-extrabold tracking-wide text-amber-200/90 uppercase">
-              Shelf
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {INGREDIENT_ORDER.map((id) => (
-                <ShelfItem key={id} id={id} />
-              ))}
-            </div>
-          </section>
-
+        <div className="flex min-h-0 flex-1 items-center justify-center gap-10 px-5">
           <Cauldron />
           <StirWheel onBrew={handleBrew} />
         </div>

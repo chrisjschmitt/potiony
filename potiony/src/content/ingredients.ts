@@ -22,6 +22,13 @@ export const INGREDIENTS: Record<IngredientId, Ingredient> = {
     swatch: 'from-lime-400 to-emerald-500',
     hint: 'Grows in the Enchanted Forest',
   },
+  moonpetal: {
+    id: 'moonpetal',
+    name: 'Moonpetal',
+    emoji: '🌙',
+    swatch: 'from-indigo-300 to-violet-600',
+    hint: 'Glows in Moonlit Meadow',
+  },
   star_dust: {
     id: 'star_dust',
     name: 'Star Dust',
@@ -35,5 +42,10 @@ export const INGREDIENT_ORDER: IngredientId[] = [
   'sunlight_blossom',
   'dewdrop_crystal',
   'whispering_leaf',
+  'moonpetal',
   'star_dust',
 ]
+
+export function visibleIngredients(level: number): IngredientId[] {
+  return INGREDIENT_ORDER.filter((id) => id !== 'moonpetal' || level >= 2)
+}

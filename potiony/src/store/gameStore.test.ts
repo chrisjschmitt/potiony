@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { STAR_DUST_PER_PERFECT_ZONE, ZONES } from '../content/zones'
-import { selectPlanetClean, selectTrashCollected, useGame } from './gameStore'
+import { LITTER_KINDS, STAR_DUST_PER_PERFECT_ZONE, ZONES } from '../content/zones'
+import { selectFriendTotal, selectHealedCount, selectPlanetClean, selectTrashCollected, useGame } from './gameStore'
 
 const game = () => useGame.getState()
 
 /** Sorts every remaining piece of litter in a zone. */
-const clearZone = (zoneId: 'park' | 'beach' | 'forest') => {
+const clearZone = (zoneId: 'park' | 'beach' | 'forest' | 'meadow') => {
   for (const item of [...game().zones[zoneId].litter]) {
     game().collectLitter(zoneId, item.id)
   }
@@ -26,6 +26,9 @@ describe('collecting litter', () => {
     expect(game().zones.park.collected).toBe(1)
     expect(game().ingredients.sunlight_blossom).toBe(1)
     expect(selectTrashCollected(game())).toBe(1)
+    expect(
+      game().recycled.paper + game().recycled.plastic + game().recycled.metal,
+    ).toBe(1)
   })
 
   it('awards the ingredient that belongs to each zone', () => {
@@ -94,6 +97,7 @@ describe('the cauldron', () => {
         sunlight_blossom: 1,
         dewdrop_crystal: 1,
         whispering_leaf: 0,
+        moonpetal: 0,
         star_dust: 0,
       },
     })
@@ -110,20 +114,20 @@ describe('the cauldron', () => {
     expect(game().cauldron).toEqual(['sunlight_blossom'])
   })
 
-  it('holds at most three ingredients', () => {
+  it('holds at most two ingredients', () => {
     useGame.setState({
       ingredients: {
         sunlight_blossom: 9,
         dewdrop_crystal: 9,
         whispering_leaf: 9,
+        moonpetal: 9,
         star_dust: 9,
       },
     })
-    for (const id of ['sunlight_blossom', 'dewdrop_crystal', 'whispering_leaf'] as const) {
-      expect(game().addToCauldron(id)).toBe(true)
-    }
-    expect(game().addToCauldron('star_dust')).toBe(false)
-    expect(game().cauldron).toHaveLength(3)
+    expect(game().addToCauldron('sunlight_blossom')).toBe(true)
+    expect(game().addToCauldron('dewdrop_crystal')).toBe(true)
+    expect(game().addToCauldron('whispering_leaf')).toBe(false)
+    expect(game().cauldron).toHaveLength(2)
   })
 })
 
@@ -134,6 +138,7 @@ describe('brewing', () => {
         sunlight_blossom: 2,
         dewdrop_crystal: 1,
         whispering_leaf: 0,
+        moonpetal: 0,
         star_dust: 1,
       },
     })
@@ -163,7 +168,7 @@ describe('brewing', () => {
 
   it('does not list the same recipe twice', () => {
     useGame.setState({
-      ingredients: { sunlight_blossom: 2, dewdrop_crystal: 2, whispering_leaf: 0, star_dust: 0 },
+      ingredients: { sunlight_blossom: 2, dewdrop_crystal: 2, whispering_leaf: 0, moonpetal: 0, star_dust: 0 },
     })
     game().addToCauldron('sunlight_blossom')
     game().addToCauldron('dewdrop_crystal')
@@ -180,7 +185,7 @@ describe('brewing', () => {
 describe('helping friends', () => {
   beforeEach(() => {
     useGame.setState({
-      potions: { giggle_fizz: 1, cozy_warmth: 1, super_bouncy: 0 },
+      potions: { giggle_fizz: 1, cozy_warmth: 1, super_bouncy: 0, moonbeam_sip: 0, starry_hug: 0 },
     })
   })
 
@@ -220,7 +225,65 @@ describe('starting over', () => {
     expect(selectTrashCollected(game())).toBe(0)
     expect(selectPlanetClean(game())).toBe(0)
     expect(game().ingredients.star_dust).toBe(0)
+    expect(game().recycled.paper + game().recycled.plastic + game().recycled.metal).toBe(0)
     expect(game().friends.freddy_fox.healed).toBe(false)
     expect(game().started).toBe(true)
+    expect(game().level).toBe(1)
+    expect(game().dumped).toBe(0)
+  })
+})
+
+describe('level 2 trash', () => {
+  it('does not scatter trash until Level 2', () => {
+    expect(game().level).toBe(1)
+    expect(
+      game().zones.park.litter.every((item) => LITTER_KINDS[item.kind].material !== 'trash'),
+    ).toBe(true)
+  })
+
+  it('dumps trash without awarding a potion ingredient', () => {
+    game().unlockLevel2()
+    const trashItem = game().zones.park.litter.find(
+      (item) => LITTER_KINDS[item.kind].material === 'trash',
+    )
+    expect(trashItem).toBeTruthy()
+    const blossom = game().ingredients.sunlight_blossom
+
+    game().collectLitter('park', trashItem!.id)
+
+    expect(game().dumped).toBe(1)
+    expect(game().ingredients.sunlight_blossom).toBe(blossom)
+    expect(game().recycled.paper + game().recycled.plastic + game().recycled.metal).toBe(0)
+  })
+
+  it('unlocks after the first three friends are helped', () => {
+    useGame.setState({
+      potions: {
+        giggle_fizz: 1,
+        cozy_warmth: 1,
+        super_bouncy: 1,
+        moonbeam_sip: 0,
+        starry_hug: 0,
+      },
+    })
+    game().givePotion('freddy_fox', 'giggle_fizz')
+    game().givePotion('barnaby_bear', 'cozy_warmth')
+    game().givePotion('pippa_bunny', 'super_bouncy')
+
+    expect(game().level).toBe(2)
+    expect(game().levelUpOpen).toBe(true)
+    expect(selectHealedCount(game())).toBe(3)
+    expect(selectFriendTotal(game())).toBe(5)
+    expect(
+      game().zones.park.litter.some((item) => LITTER_KINDS[item.kind].material === 'trash'),
+    ).toBe(true)
+  })
+
+  it('refills a Level 2 zone with trash as well as recyclables', () => {
+    game().unlockLevel2()
+    game().refillZone('park')
+    const litter = game().zones.park.litter
+    expect(litter).toHaveLength(ZONES.park.litterCount + ZONES.park.trashCount)
+    expect(litter.some((item) => LITTER_KINDS[item.kind].material === 'trash')).toBe(true)
   })
 })

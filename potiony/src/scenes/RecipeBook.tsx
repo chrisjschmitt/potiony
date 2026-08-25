@@ -5,7 +5,7 @@ import { useGame } from '../store/gameStore'
 import { audio } from '../systems/audio/AudioBus'
 
 const STEPS = [
-  { emoji: '🏞️', title: 'Tidy up', text: 'Pop litter into the right bin to find ingredients.' },
+  { emoji: '🏞️', title: 'Tidy up', text: 'Drag each piece onto the matching bin.' },
   { emoji: '🧪', title: 'Brew', text: 'Mix 2 ingredients in the cauldron and stir.' },
   { emoji: '🏡', title: 'Help', text: 'Give the potion to the friend who needs it.' },
 ]
@@ -14,6 +14,7 @@ export function RecipeBook() {
   const discovered = useGame((s) => s.discoveredRecipes)
   const ingredients = useGame((s) => s.ingredients)
   const setScene = useGame((s) => s.setScene)
+  const level = useGame((s) => s.level)
 
   return (
     <div className="h-full overflow-y-auto rounded-[2rem] border-4 border-white/20 bg-[radial-gradient(circle_at_50%_0%,#7c2d12_0%,#451a03_60%,#1c0701_100%)] px-5 py-4">
@@ -43,13 +44,16 @@ export function RecipeBook() {
       <div className="grid gap-4 lg:grid-cols-3">
         {POTION_ORDER.map((id) => {
           const potion = POTIONS[id]
+          const locked = potion.minLevel > level
           const known = discovered.includes(id)
           const friend = FRIEND_ORDER.map((f) => FRIENDS[f]).find((f) => f.needs === id)
-          const canMake = potion.ingredients.every(
-            (ing) =>
-              ingredients[ing] >=
-              potion.ingredients.filter((other) => other === ing).length,
-          )
+          const canMake =
+            !locked &&
+            potion.ingredients.every(
+              (ing) =>
+                ingredients[ing] >=
+                potion.ingredients.filter((other) => other === ing).length,
+            )
 
           return (
             <article
@@ -67,7 +71,7 @@ export function RecipeBook() {
                       className="grid h-16 w-16 place-items-center rounded-2xl border-4 border-white bg-gradient-to-br text-3xl shadow"
                       title={INGREDIENTS[ing].name}
                     >
-                      {INGREDIENTS[ing].emoji}
+                      {locked ? '🔒' : INGREDIENTS[ing].emoji}
                     </span>
                   </span>
                 ))}
@@ -84,16 +88,17 @@ export function RecipeBook() {
               </div>
 
               <h3 className="text-center text-lg font-black">
-                {known ? potion.name : 'Not brewed yet'}
+                {locked ? 'Level 2 secret' : known ? potion.name : 'Not brewed yet'}
               </h3>
 
-              {friend && (
+              {friend && !locked && (
                 <p className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900/10 px-3 py-2 text-center text-sm font-bold">
                   <span className="text-2xl">{friend.emoji}</span>
                   {friend.name} needs this for the {friend.ailment}
                 </p>
               )}
 
+              {!locked && (
               <div className="mt-auto grid gap-1 text-xs font-bold text-slate-700">
                 {potion.ingredients.map((ing) => (
                   <span key={ing} className="flex items-center justify-between gap-2">
@@ -109,20 +114,24 @@ export function RecipeBook() {
                   {INGREDIENTS[potion.ingredients[0]].hint}
                 </span>
               </div>
+              )}
 
               <button
                 onClick={() => {
                   audio.tap()
-                  setScene(canMake ? 'lab' : 'clean')
+                  if (locked) setScene('town')
+                  else setScene(canMake ? 'lab' : 'clean')
                 }}
                 className={[
                   'min-h-14 rounded-2xl border-4 border-white px-4 font-black text-white active:scale-95',
-                  canMake
-                    ? 'bg-gradient-to-b from-emerald-400 to-emerald-600'
-                    : 'bg-gradient-to-b from-sky-400 to-sky-600',
+                  locked
+                    ? 'bg-gradient-to-b from-slate-500 to-slate-700'
+                    : canMake
+                      ? 'bg-gradient-to-b from-emerald-400 to-emerald-600'
+                      : 'bg-gradient-to-b from-sky-400 to-sky-600',
                 ].join(' ')}
               >
-                {canMake ? '🧪 Brew it now' : '🏞️ Find ingredients'}
+                {locked ? '🔒 Help friends first' : canMake ? '🧪 Brew it now' : '🏞️ Find ingredients'}
               </button>
             </article>
           )

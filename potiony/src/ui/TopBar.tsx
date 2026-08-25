@@ -1,14 +1,6 @@
 import { useState } from 'react'
-import {
-  selectHealedCount,
-  selectPlanetClean,
-  selectTotalIngredients,
-  selectTotalPotions,
-  selectTrashCollected,
-  useGame,
-} from '../store/gameStore'
+import { selectHealedCount, selectFriendTotal, selectPlanetClean, useGame } from '../store/gameStore'
 import { audio } from '../systems/audio/AudioBus'
-import { FRIEND_ORDER } from '../content/friends'
 
 function PlanetMeter() {
   const clean = useGame(selectPlanetClean)
@@ -42,12 +34,10 @@ function PlanetMeter() {
 }
 
 export function TopBar() {
-  const trash = useGame(selectTrashCollected)
-  const ingredients = useGame(selectTotalIngredients)
-  const potions = useGame(selectTotalPotions)
-  const healed = useGame(selectHealedCount)
-  const toggleDrawer = useGame((s) => s.toggleDrawer)
   const setScene = useGame((s) => s.setScene)
+  const level = useGame((s) => s.level)
+  const healed = useGame(selectHealedCount)
+  const friendTotal = useGame(selectFriendTotal)
   const [muted, setMuted] = useState(false)
 
   return (
@@ -66,14 +56,15 @@ export function TopBar() {
 
       <PlanetMeter />
 
-      <div className="hidden items-center gap-3 rounded-2xl border-2 border-white/20 bg-white/10 px-3 py-1.5 text-sm font-bold md:flex">
-        <span title="Litter sorted">🗑️ {trash}</span>
-        <span title="Ingredients">🌿 {ingredients}</span>
-        <span title="Potions">🧪 {potions}</span>
-        <span title="Friends helped">
-          💛 {healed}/{FRIEND_ORDER.length}
+      <span className="flex h-14 shrink-0 items-center rounded-2xl border-4 border-white/30 bg-white/10 px-3 text-lg font-black">
+        💛 {healed}/{friendTotal}
+      </span>
+
+      {level >= 2 && (
+        <span className="hidden shrink-0 rounded-full border-4 border-amber-300 bg-amber-400 px-3 py-1 text-sm font-black text-slate-900 sm:inline">
+          Level 2
         </span>
-      </div>
+      )}
 
       <button
         onClick={() => {
@@ -85,17 +76,6 @@ export function TopBar() {
         className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border-4 border-white/30 bg-white/10 text-2xl active:scale-95"
       >
         {muted ? '🔇' : '🔊'}
-      </button>
-
-      <button
-        onClick={() => {
-          audio.tap()
-          toggleDrawer()
-        }}
-        aria-label="Open my bag"
-        className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border-4 border-white/60 bg-amber-400/90 text-2xl text-slate-900 active:scale-95"
-      >
-        🎒
       </button>
     </header>
   )

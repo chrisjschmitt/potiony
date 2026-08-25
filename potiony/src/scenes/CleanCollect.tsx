@@ -1,22 +1,20 @@
 import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { INGREDIENTS } from '../content/ingredients'
-import { MATERIALS } from '../content/types'
+import { BIN_ORDER_LEVEL2, MATERIALS, MATERIAL_ORDER } from '../content/types'
 import type { Material } from '../content/types'
 import { LITTER_KINDS, ZONES, ZONE_ORDER } from '../content/zones'
 import type { LitterInstance } from '../store/save'
-import { useGame } from '../store/gameStore'
+import { selectZoneTidyNow, useGame } from '../store/gameStore'
 import { audio } from '../systems/audio/AudioBus'
 import { fx } from '../systems/fx/ParticleLayer'
 import { useDraggable, useDropTarget } from '../systems/drag/DragProvider'
 import type { DragPayload } from '../systems/drag/DragProvider'
 
-const MATERIAL_ORDER: Material[] = ['paper', 'plastic', 'metal']
-
-function LitterPiece({ item, onCollect }: { item: LitterInstance; onCollect: (el: Element | null) => void }) {
+function LitterPiece({ item }: { item: LitterInstance }) {
   const kind = LITTER_KINDS[item.kind]
-  const ref = useRef<HTMLDivElement | null>(null)
   const zoneId = useGame((s) => s.activeZone)
+  const showToast = useGame((s) => s.showToast)
   const payload: DragPayload = {
     kind: 'litter',
     id: item.id,
@@ -27,14 +25,18 @@ function LitterPiece({ item, onCollect }: { item: LitterInstance; onCollect: (el
 
   const { onPointerDown, isDragging } = useDraggable({
     payload,
-    // Tapping is the easy path: the litter hops straight into the right bin.
-    onTap: () => onCollect(ref.current),
-    onMiss: () => audio.nope(),
+    onTap: () => {
+      audio.tap()
+      showToast(kind.emoji, 'Drag it onto the matching bin!')
+    },
+    onMiss: () => {
+      audio.nope()
+      showToast(kind.emoji, 'Drop it on a bin!')
+    },
   })
 
   return (
     <motion.div
-      ref={ref}
       onPointerDown={(e) => {
         audio.pick()
         onPointerDown(e)
@@ -50,7 +52,7 @@ function LitterPiece({ item, onCollect }: { item: LitterInstance; onCollect: (el
         isDragging ? 'opacity-25' : '',
       ].join(' ')}
       aria-label={`${kind.name}, ${MATERIALS[kind.material].name}`}
-      role="button"
+      role="img"
     >
       <span className="drop-shadow select-none">{kind.emoji}</span>
     </motion.div>
@@ -85,14 +87,16 @@ function Bin({
         setRef(el)
       }}
       className={[
-        'flex h-32 w-28 flex-col items-center justify-center gap-1 rounded-3xl border-4 border-white/80 bg-gradient-to-b shadow-xl transition sm:w-36',
+        'flex h-28 w-24 flex-col items-center justify-center gap-1 rounded-3xl border-4 border-white/80 bg-gradient-to-b shadow-xl transition sm:h-32 sm:w-32',
         info.swatch,
         isOver ? 'scale-110 ring-8 ring-white' : isCandidate ? 'animate-bob' : '',
       ].join(' ')}
     >
       <span className="text-4xl drop-shadow">{info.emoji}</span>
-      <span className="text-lg font-black text-white drop-shadow">{info.name}</span>
-      <span className="text-[11px] font-bold text-white/80">Drop here!</span>
+      <span className="text-base font-black text-white drop-shadow sm:text-lg">{info.name}</span>
+      <span className="text-[11px] font-bold text-white/80">
+        {material === 'trash' ? 'Dump here!' : 'Drop here!'}
+      </span>
     </div>
   )
 }
@@ -104,10 +108,13 @@ export function CleanCollect() {
   const collectLitter = useGame((s) => s.collectLitter)
   const refillZone = useGame((s) => s.refillZone)
   const showToast = useGame((s) => s.showToast)
+  const level = useGame((s) => s.level)
+  const tidyNow = useGame((s) => selectZoneTidyNow(s, zoneId))
   const zone = ZONES[zoneId]
   const ingredient = INGREDIENTS[zone.ingredient]
+  const bins = level >= 2 ? BIN_ORDER_LEVEL2 : MATERIAL_ORDER
 
-  const clean = zoneState.bestClean
+  const clean = Math.max(zoneState.bestClean, tidyNow)
   const remaining = zoneState.litter.length
 
   // When a zone is spotless the wind brings a little more litter, so the
@@ -121,14 +128,20 @@ export function CleanCollect() {
     return () => window.clearTimeout(id)
   }, [remaining, zoneId, refillZone, showToast])
 
-  const reward = (el: Element | null) => {
+  const reward = (litterId: string, el: Element | null) => {
+    const item = zoneState.litter.find((l) => l.id === litterId)
+    const kind = item ? LITTER_KINDS[item.kind] : null
     audio.sparkle()
-    fx.burstAt(el, { emojis: [ingredient.emoji, '✨'], count: 12, power: 300 })
+    fx.burstAt(el, {
+      emojis: kind?.material === 'trash' ? ['🗑️', '✨'] : [ingredient.emoji, '✨'],
+      count: 12,
+      power: 300,
+    })
   }
 
   const sortLitter = (litterId: string, el: Element | null) => {
+    reward(litterId, el)
     collectLitter(zoneId, litterId)
-    reward(el)
   }
 
   return (
@@ -161,24 +174,31 @@ export function CleanCollect() {
       </div>
 
       {/* Zone picker */}
-      <div className="absolute top-3 left-3 z-20 flex gap-2">
+      <div className="absolute top-3 left-3 z-20 flex max-w-[70%] gap-2 overflow-x-auto">
         {ZONE_ORDER.map((id) => {
           const active = id === zoneId
+          const locked = ZONES[id].minLevel > level
           return (
             <button
               key={id}
               onClick={() => {
                 audio.tap()
+                if (locked) {
+                  showToast('🔒', 'Help your three friends first to open Moonlit Meadow!')
+                  return
+                }
                 setZone(id)
               }}
               className={[
-                'flex min-h-16 items-center gap-2 rounded-2xl border-4 px-3 py-2 font-black transition',
-                active
-                  ? 'scale-105 border-white bg-white text-slate-900 shadow-xl'
-                  : 'border-white/50 bg-slate-900/45 text-white active:scale-95',
+                'flex min-h-16 shrink-0 items-center gap-2 rounded-2xl border-4 px-3 py-2 font-black transition',
+                locked
+                  ? 'border-white/20 bg-slate-900/60 text-white/50'
+                  : active
+                    ? 'scale-105 border-white bg-white text-slate-900 shadow-xl'
+                    : 'border-white/50 bg-slate-900/45 text-white active:scale-95',
               ].join(' ')}
             >
-              <span className="text-3xl">{ZONES[id].emoji}</span>
+              <span className="text-3xl">{locked ? '🔒' : ZONES[id].emoji}</span>
               <span className="hidden text-sm sm:block">{ZONES[id].name}</span>
             </button>
           )
@@ -188,15 +208,17 @@ export function CleanCollect() {
       <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-2xl border-4 border-white/50 bg-slate-900/45 px-4 py-2">
         <span className="text-3xl">{ingredient.emoji}</span>
         <div className="text-left">
-          <p className="text-sm font-black">{Math.round(clean * 100)}% tidy</p>
-          <p className="text-[11px] font-bold text-white/75">Find {ingredient.name}</p>
+          <p className="text-sm font-black">{Math.round(tidyNow * 100)}% tidy</p>
+          <p className="text-[11px] font-bold text-white/75">
+            Drag each piece to its bin
+          </p>
         </div>
       </div>
 
       {/* Play area */}
       <div className="absolute inset-x-0 top-24 bottom-44">
         {zoneState.litter.map((item) => (
-          <LitterPiece key={item.id} item={item} onCollect={(el) => sortLitter(item.id, el)} />
+          <LitterPiece key={item.id} item={item} />
         ))}
 
         {remaining === 0 && (
@@ -214,15 +236,27 @@ export function CleanCollect() {
       </div>
 
       {/* Bins */}
-      <div className="absolute inset-x-0 bottom-4 z-20 flex items-end justify-center gap-4 sm:gap-8">
-        {MATERIAL_ORDER.map((material) => (
+      <div className="absolute inset-x-0 bottom-4 z-20 flex items-end justify-center gap-2 sm:gap-4">
+        {bins.map((material) => (
           <Bin
             key={material}
             material={material}
             onSorted={sortLitter}
             onWrong={(actual) => {
               audio.nope()
-              showToast(MATERIALS[actual].emoji, `Oops! That one goes in the ${MATERIALS[actual].name} bin.`)
+              if (actual === 'trash') {
+                showToast('🗑️', "That's trash, not recycling! Pop it in the dumpster.")
+              } else if (material === 'trash') {
+                showToast(
+                  MATERIALS[actual].emoji,
+                  `That can be recycled in the ${MATERIALS[actual].name} bin!`,
+                )
+              } else {
+                showToast(
+                  MATERIALS[actual].emoji,
+                  `Oops! That one goes in the ${MATERIALS[actual].name} bin.`,
+                )
+              }
             }}
           />
         ))}

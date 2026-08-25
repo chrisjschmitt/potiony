@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { LEVEL1_FRIENDS } from './content/friends'
 import { useGame } from './store/gameStore'
 import { audio } from './systems/audio/AudioBus'
 import { DragProvider } from './systems/drag/DragProvider'
@@ -8,7 +9,8 @@ import { CleanCollect } from './scenes/CleanCollect'
 import { PotionLab } from './scenes/PotionLab'
 import { Town } from './scenes/Town'
 import { RecipeBook } from './scenes/RecipeBook'
-import { InventoryDrawer } from './ui/InventoryDrawer'
+import { GameHUD } from './ui/GameHUD'
+import { LevelUpModal } from './ui/LevelUpModal'
 import { OrientationGuard } from './ui/OrientationGuard'
 import { TabBar } from './ui/TabBar'
 import { TitleScreen } from './ui/TitleScreen'
@@ -47,7 +49,26 @@ export default function App() {
   const started = useGame((s) => s.started)
   const activeScene = useGame((s) => s.activeScene)
   const Scene = SCENES[activeScene]
+  const level = useGame((s) => s.level)
+  const l1Done = useGame((s) => LEVEL1_FRIENDS.every((id) => s.friends[id]?.healed))
+  const unlockLevel2 = useGame((s) => s.unlockLevel2)
   useIpadHardening()
+
+  useEffect(() => {
+    if (!started) return
+    const s = useGame.getState()
+    if (s.level < 2 && l1Done) {
+      s.unlockLevel2()
+      return
+    }
+    // Old saves that already helped the first three friends migrate to Level 2
+    // without opening the dumpster intro. Show it once they Keep Playing.
+    const l2Started =
+      s.dumped > 0 || Boolean(s.friends.olive_owl?.healed) || Boolean(s.friends.nori_newt?.healed)
+    if (s.level >= 2 && l1Done && !l2Started) {
+      useGame.setState({ levelUpOpen: true })
+    }
+  }, [started, l1Done, level, unlockLevel2])
 
   return (
     <DragProvider>
@@ -71,8 +92,9 @@ export default function App() {
                 </motion.div>
               </AnimatePresence>
             </main>
+            <GameHUD />
             <TabBar />
-            <InventoryDrawer />
+            <LevelUpModal />
           </>
         )}
       </div>
